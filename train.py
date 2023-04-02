@@ -35,15 +35,15 @@ class Runner:
             u = []
             s = [0] * self.args.n_agents
             s_ = [0] * self.args.n_agents
-            print(trial)
+            print(f'{trial}/ {self.args.max_iter}')
+            while True:
+                state = self.env.reset()
+                if self.env.collide():
+                    for i in range(self.args.n_agents):
+                        s[i] = state + np.random.uniform(-0.1, 0.1, state.shape)
+                    break
+            command = np.array([])
             for steps in range(self.args.max_episode_len):
-                while True:
-                    state = self.env.reset()
-                    if self.env.collide():
-                        for i in range(self.args.n_agents):
-                            s[i] = state + np.random.uniform(-0.1, 0.1, state.shape)
-                        break
-                command = np.array([])
 
                 with torch.no_grad():
                     for i in range(self.args.n_agents):

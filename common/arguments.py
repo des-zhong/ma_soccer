@@ -34,8 +34,8 @@ def get_args():
     # Checkpointing
     parser.add_argument("--save-dir", type=str, default="./model/2v2test", help="directory in which training state and model should be saved")
     parser.add_argument("--save-rate", type=int, default=1000, help="save model once every time this many episodes are completed")
-    parser.add_argument("--model-dir", type=str, default="", help="directory in which training state and model are loaded")
-
+    parser.add_argument("--model-dir", type=str, default="./model/2v2test", help="directory in which training state and model are loaded")
+    parser.add_argument("--models-id", type=int, default=373, help="id of the current model")
     # Evaluate
     parser.add_argument("--evaluate-episodes", type=int, default=10, help="number of episodes for evaluating")
     parser.add_argument("--evaluate-episode-len", type=int, default=100, help="length of episodes for evaluating")

@@ -1,6 +1,10 @@
+import time
+
 from config import *
 import numpy as np
 import visualize
+from agent import Agent
+import torch
 import maddpg
 
 
@@ -114,6 +118,7 @@ class object():
 
 class field():
     def __init__(self, arg):
+        self.args = arg
         self.numA = arg.num_teamA
         self.numB = arg.num_teamB
         self.length = arg.field_length
@@ -338,37 +343,42 @@ class field():
                     r[kick - 1] += 5
         return state_, done, r
 
-    def match(self, id, num):
-        agentA = DDPG.DDPG(alpha=actor_lr, beta=critic_lr, state_dim=state_dim,
-                           action_dim=action_dim, actor_fc1_dim=fc1_dim, actor_fc2_dim=fc2_dim,
-                           actor_fc3_dim=fc3_dim,
-                           critic_fc1_dim=fc1_dim, critic_fc2_dim=fc2_dim, critic_fc3_dim=fc3_dim,
-                           ckpt_dir='./checkpoints/' + 'test' + '/',
-                           batch_size=64)
-        agentA.load_models(id, './checkpoints/' + 'DDPG' + '/test/')
-
+    def match(self, num, agent_arg):
+        agents = []
+        while True:
+            self.reset()
+            ok = self.collide()
+            if ok:
+                break
+        for i in range(self.args.num_teamA):
+            agent = Agent(i, agent_arg)
+            agents.append(agent)
         for i in range(num):
             print('match ', i, ' begins')
-            flag = 0
-            ok = False
+            u = []
+            s = [0] * self.args.num_teamA
+            s_ = [0] * self.args.num_teamA
             while True:
-                self.reset()
-                ok = self.collide()
-                if ok:
+                state = self.reset()
+                if self.collide():
+                    for ii in range(self.args.num_teamA):
+                        s[ii] = state + np.random.uniform(-0.1, 0.1, state.shape)
                     break
+            command = np.array([])
             k = 0
             all_state = []
+            flag = 0
             while flag == 0 and k < max_iter:
-                # state = self.derive_pos()
-                state, index_a, index_b = self.derive_arc()
-                # state_i = rearrangeOrder(state, i, index_a)
-                action = agentA.choose_action(state, train=False).reshape(action_dim, )
-                command = action.copy()
-                for i in range(teamB_num):
-                    state = self.derive_pos()
-                    j = 2 * i + 2 * teamB_num
-                    command = np.concatenate((command, 0.05 * state[j:j + 2]))
-                self.set_vel(command)
+                with torch.no_grad():
+                    for ii in range(self.args.num_teamA):
+                        action = agents[ii].select_action(s[ii], agent_arg.noise_rate, agent_arg.epsilon)
+                        u.append(action)
+                        command = np.concatenate((command, action))
+                for ii in range(self.args.num_teamB):
+                    command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
+                state_next, done, r = self.run(command)
+                for ii in range(self.args.num_teamA):
+                    s_[ii] = state_next + np.random.uniform(-0.1, 0.1, state_next.shape)
                 bug, kick = self.detect_player()
                 if bug:
                     break
@@ -376,4 +386,5 @@ class field():
                 k = k + 1
                 all_state.append(self.derive_state())
             visualize.draw(all_state)
+
             print('\n')

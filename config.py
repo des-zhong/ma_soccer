@@ -13,12 +13,13 @@ scale = np.sqrt(field_width ** 2 + field_length ** 2) / 4
 radius_soccer = 50/2
 radius_player = 131/2
 gate_length = 800
-teamA_num = 1
-teamB_num = 0
+teamA_num = 2
+teamB_num = 2
 max_velocity = 100
 max_iter = 3000
 state_dim = 2 * (teamA_num + teamB_num) + 2
 action_dim = 2*teamA_num
+model_id = 373
 
 fc1_dim = 128
 fc2_dim = 64

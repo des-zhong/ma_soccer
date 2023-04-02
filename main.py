@@ -6,6 +6,5 @@ if __name__ == '__main__':
     env_arg = get_env_arg()
     args = get_args()
     field = utility.field(env_arg)
-    field.match()
-    # field.match(10000, 30)
+    field.match(10, args)
     # field.test_collide(1)
