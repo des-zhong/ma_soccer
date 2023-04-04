@@ -1,7 +1,8 @@
 import sys
 import pygame
-from config import *
+# from config import *
 import time
+from common.arguments import get_env_arg
 
 white = (255, 255, 255)
 
@@ -12,41 +13,42 @@ def text_objects(text, font):
 
 
 def draw(all_state):
+    args = get_env_arg()
     pygame.init()
     ratio = 3
     my_font = pygame.font.SysFont("arial", 16)
     # 设置主屏窗口 ；设置全屏格式：flags=pygame.FULLSCREEN
-    screen = pygame.display.set_mode((field_width / ratio, field_length / ratio))
+    screen = pygame.display.set_mode((args.field_width / ratio, args.field_length / ratio))
     # 设置窗口标题
     pygame.display.set_caption('soccer game')
     wid = 20
     fzone_wid = 150
     gap = 50
     for state in all_state:
-        teamA = state[0:4 * teamA_num]
-        teamB = state[4 * teamA_num:4 * teamA_num + 4 * teamB_num]
+        teamA = state[0:4 * args.num_teamA]
+        teamB = state[4 * args.num_teamA:4 * args.num_teamA + 4 * args.num_teamB]
         soccer_coord = [state[-4], state[-3]]
         screen.fill('green')
-        gate = pygame.Rect(field_width / ratio - wid, (field_length - gate_length) / 2 / ratio, wid,
-                           gate_length / ratio)
-        fzone = pygame.Rect(field_width / ratio - fzone_wid, (field_length - gate_length) / 2 / ratio - gap, fzone_wid,
-                            gate_length / ratio + gap * 2)
-        pygame.draw.circle(screen, (255, 255, 255), (0, field_length / 2 / ratio), 200, width=3)
-        pygame.draw.lines(screen, (255, 255, 255), False, [(0, 0), (0, field_length / ratio)], width=3)
+        gate = pygame.Rect(args.field_width / ratio - wid, (args.field_length - args.gate_length) / 2 / ratio, wid,
+                           args.gate_length / ratio)
+        fzone = pygame.Rect(args.field_width / ratio - fzone_wid, (args.field_length - args.gate_length) / 2 / ratio-gap, fzone_wid,
+                            args.gate_length / ratio+2*gap)
+        pygame.draw.circle(screen, (255, 255, 255), (0, args.field_length / 2 / ratio), 200, width=3)
+        pygame.draw.lines(screen, (255, 255, 255), False, [(0, 0), (0, args.field_length / ratio)], width=3)
         pygame.draw.lines(screen, (255, 255, 255), False,
-                          [(field_width / 2 / ratio, 0), (field_width / 2 / ratio, field_length / ratio)], width=3)
+                          [(args.field_width / 2 / ratio, 0), (args.field_width / 2 / ratio, args.field_length / ratio)], width=3)
         pygame.draw.rect(screen, (190, 190, 190), gate)
         pygame.draw.rect(screen, (255, 255, 255), fzone, width=3)
-        for i in range(teamA_num):
-            pygame.draw.circle(screen, (255, 0, 0), (
-                (teamA[4 * i] + field_width / 2) / ratio, (-teamA[4 * i + 1] + field_length / 2) / ratio),
-                               radius_player / ratio)
-        for i in range(teamB_num):
+        for i in range(args.num_teamA):
+            pygame.draw.circle(screen, (155*i, 155*(1-i), 0), (
+                (teamA[4 * i] + args.field_width / 2) / ratio, (-teamA[4 * i + 1] + args.field_length / 2) / ratio),
+                               args.radius_player / ratio)
+        for i in range(args.num_teamB):
             pygame.draw.circle(screen, (0, 0, 255), (
-                (teamB[4 * i] + field_width / 2) / ratio, (-teamB[4 * i + 1] + field_length / 2) / ratio),
-                               radius_player / ratio)
+                (teamB[4 * i] + args.field_width / 2) / ratio, (-teamB[4 * i + 1] + args.field_length / 2) / ratio),
+                               args.radius_player / ratio)
         pygame.draw.circle(screen, (255, 255, 255),
-                           ((soccer_coord[0] + field_width / 2) / ratio, (-soccer_coord[1] + field_length / 2) / ratio),
-                           radius_soccer / ratio)
+                           ((soccer_coord[0] + args.field_width / 2) / ratio, (-soccer_coord[1] + args.field_length / 2) / ratio),
+                           args.radius_soccer / ratio)
         pygame.display.update()  # 更新屏幕内容
-        time.sleep(time_step/20)
+        time.sleep(args.time_step/20)
