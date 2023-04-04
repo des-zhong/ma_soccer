@@ -1,6 +1,7 @@
 import torch
 import os
 from actor_critic import Actor, Critic
+import time
 
 
 class MADDPG:
@@ -37,13 +38,14 @@ class MADDPG:
             os.mkdir(self.model_path)
 
         # 加载模型
-        if os.path.exists(self.model_path + '/actor_params.pkl'):
-            self.actor_network.load_state_dict(torch.load(self.model_path + '/actor_params.pkl'))
-            self.critic_network.load_state_dict(torch.load(self.model_path + '/critic_params.pkl'))
+        n = '8'
+        if os.path.exists(self.model_path + '/'+n+'_actor_params.pkl'):
+            self.actor_network.load_state_dict(torch.load(self.model_path + '/'+n+'_actor_params.pkl'))
+            self.critic_network.load_state_dict(torch.load(self.model_path + '/'+n+'_critic_params.pkl'))
             print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
-                                                                          self.model_path + '/actor_params.pkl'))
+                                                                          self.model_path + '/'+n+'_actor_params.pkl'))
             print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
-                                                                           self.model_path + '/critic_params.pkl'))
+                                                                           self.model_path + '/'+n+'_critic_params.pkl'))
 
     # soft update
     def _soft_update_target_network(self):
@@ -91,6 +93,7 @@ class MADDPG:
         # if self.agent_id == 0:
         #     print('critic_loss is {}, actor_loss is {}'.format(critic_loss, actor_loss))
         # update the network
+
         self.actor_optim.zero_grad()
         actor_loss.backward()
         self.actor_optim.step()
@@ -104,6 +107,7 @@ class MADDPG:
         self.train_step += 1
 
     def save_model(self, train_step):
+
         num = str(train_step // self.args.save_rate)
         model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
         if not os.path.exists(model_path):
@@ -112,6 +116,4 @@ class MADDPG:
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         torch.save(self.actor_network.state_dict(), model_path + '/' + num + '_actor_params.pkl')
-        torch.save(self.critic_network.state_dict(),  model_path + '/' + num + '_critic_params.pkl')
-
-
+        torch.save(self.critic_network.state_dict(), model_path + '/' + num + '_critic_params.pkl')
