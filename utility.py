@@ -314,7 +314,15 @@ class field():
         return eu_command
 
     def run(self, command):
+        '''
+        input: command is the velocity of all agents, command.shape=(2*a+2*b)
+        output:
+        state_.shape = (2*a+2*b,) is the next state of the env
+        flag: int, indicates wether the match is terminated(1: goal, -1: bug) or not (0)
+        r.shape=(2*a) is the reward for every agent in team A
+        '''
         state = self.derive_arc()
+        # comment the next line for an output of Euclid velocity
         command_eu = self.vel_polar2eu(state, command)
         self.set_vel(command_eu)
         done, kick = self.detect_player()
@@ -327,13 +335,13 @@ class field():
             flag = self.set_coord()
             state_ = self.derive_arc()
             for i in range(self.numA):
-                r[i] = -command[2*i]
-
+                r[i] = 100*(state[2*i]-state_[2*i])
                 # r[i] = -8*(np.cos(state[2*i+1])-np.cos(state_[2*i+1]))
                 # _, t1 = arc(self.width / 2 - self.teamA[i].coord.x, self.teamA[i].coord.y - self.gate_length / 2)
                 # _, t2 = arc(self.width / 2 - self.teamA[i].coord.x, self.teamA[i].coord.y + self.gate_length / 2)
             if kick > 0:
                 print('kick')
-                r[kick - 1] += 10
+                r[kick - 1] += 2
 
         return state_, flag, r
+

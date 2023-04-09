@@ -33,6 +33,7 @@ class Runner:
     def process_train(self):
         for trial in range(self.args.max_iter):
             v_s = []
+            # to record the state, action and reward in each trial
             trial_s = []
             trial_u = []
             trial_r = []
@@ -49,6 +50,8 @@ class Runner:
             trial_s.append(s.copy())
             trial_step = 0
             flag = 0
+
+            # process a match and record the state, next_state, the action and the reward in trial_()
             for steps in range(self.args.max_episode_len):
                 command = np.array([])
                 with torch.no_grad():
@@ -69,9 +72,9 @@ class Runner:
                 trial_step += 1
                 if not flag == 0:
                     break
-
+            # load the previously recorded transitions and process training
             for i in range(trial_step):
-                self.buffer.store_episode(trial_s[i], trial_u[i], trial_r[i], trial_s[i + 1])
+                self.buffer.store_episode(trial_s[i], trial_u[i], trial_r[i]+flag*1, trial_s[i + 1])
                 if self.buffer.current_size >= self.args.batch_size:
                     transitions = self.buffer.sample(self.args.batch_size)
                     for j in range(self.args.n_agents):

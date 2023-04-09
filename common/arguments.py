@@ -4,8 +4,8 @@ import argparse
 Here are the param for the training
 
 """
-a = 1
-b = 0
+a = 2
+b = 2
 
 
 def get_args():
@@ -19,10 +19,10 @@ def get_args():
     parser.add_argument("--n-adversaries", type=int, default=b, help="number of adversaries")
     parser.add_argument("--n-players", type=int, default=a + b, help="number of all agents")
     parser.add_argument("--n-agents", type=int, default=a, help="number of controlled agents")
-    parser.add_argument("--state-dim", type=int, default=2 * a + 2 * b + 2, help="dim of state")
-    parser.add_argument("--action-dim", type=int, default=2, help="dim of action")
-    parser.add_argument("--command-dim", type=int, default=2 * a, help="dim of action")
-    parser.add_argument("--all-state-dim", type=int, default=a * (2 * a + 2 * b + 2), help="dim of all the observation")
+    parser.add_argument("--state-dim", type=int, default=2 * a + 2 * b + 2, help="dim of obs state")
+    parser.add_argument("--action-dim", type=int, default=2, help="dim of action for each agent")
+    parser.add_argument("--command-dim", type=int, default=2 * a, help="input dim of action in critic")
+    parser.add_argument("--all-state-dim", type=int, default=a * (2 * a + 2 * b + 2), help="input dim of state in critic")
     # Core training parameters
     parser.add_argument("--lr-actor", type=float, default=1e-6, help="learning rate of actor")
     parser.add_argument("--lr-critic", type=float, default=1e-6, help="learning rate of critic")
