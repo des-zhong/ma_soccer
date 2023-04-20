@@ -124,9 +124,9 @@ class field():
 
         self.gate_length = arg.gate_length
         # self.xlimA = [-width / 2 + radius_player, width / 2 - radius_player]
-        self.xlimA = [-self.width / 2 + arg.radius_player, 0]
+        self.xlimA = [-self.width / 2 + 2 * arg.radius_player, 0]
         self.xlimB = [self.width / 4, self.width / 2 - arg.radius_player]
-        self.ylimA = [-self.length / 2 + arg.radius_player, self.length / 2 - arg.radius_player]
+        self.ylimA = [-self.length / 3 + arg.radius_player, self.length / 3 - arg.radius_player]
         self.ylimB = [-self.length / 2 + arg.radius_player, self.length / 2 - arg.radius_player]
         self.score = [0, 0]
         self.teamA = []
@@ -138,8 +138,9 @@ class field():
             random_coord = random(self.xlimB, self.ylimB)
             self.teamB.append(object(random_coord, vec2D(0, 0), arg.radius_player, i))
         self.soccer = object(vec2D(0, 0), vec2D(0, 0), arg.radius_soccer)
+        self.derive_state = self.derive_arc if arg.state_term == 1 else self.derive_pos
 
-    def derive_state(self):
+    def derive_abs_state(self):
         state = []
         for i in range(self.numA):
             state.append(self.teamA[i].coord.x)
@@ -167,7 +168,8 @@ class field():
             state.append(-self.teamB[i].coord.y + self.soccer.coord.y)
         state.append(self.width / 2 - self.soccer.coord.x)
         state.append(-self.soccer.coord.y)
-        return np.array(state)
+
+        return np.array(state) / self.width * 2
 
     def derive_arc(self):
         state = []
@@ -189,20 +191,23 @@ class field():
         return np.array(state)
 
     def reset(self):
-        self.teamA = []
-        self.teamB = []
-        for i in range(self.numA):
-            random_coord = random(self.xlimA, self.ylimA)
-            random_coord = vec2D(-800, 200)
-            self.teamA.append(object(random_coord, vec2D(0, 0), self.radius_player, i))
-        for i in range(self.numB):
-            # random_coord = random(self.xlimB, self.ylimB)
-            random_coord = vec2D(800, 200)
-            self.teamB.append(object(random_coord, vec2D(0, 0), self.radius_player, i))
-        random_coord = vec2D(-100, 100)
-        # random_coord = random([-self.width / 8, 0], [-self.length / 8, self.length / 8])
-        self.soccer = object(random_coord, vec2D(0, 0), self.radius_soccer)
-        state = self.derive_arc()
+        while True:
+            self.teamA = []
+            self.teamB = []
+            for i in range(self.numA):
+                random_coord = random(self.xlimA, self.ylimA)
+                # random_coord = vec2D(-800, 200)
+                self.teamA.append(object(random_coord, vec2D(0, 0), self.radius_player, i))
+            for i in range(self.numB):
+                random_coord = random(self.xlimB, self.ylimB)
+                # random_coord = vec2D(800, 200)
+                self.teamB.append(object(random_coord, vec2D(0, 0), self.radius_player, i))
+            # random_coord = vec2D(-100, 100)
+            random_coord = random([0, self.width / 8], [-self.length / 8, self.length / 8])
+            self.soccer = object(random_coord, vec2D(0, 0), self.radius_soccer)
+            if not self.collide():
+                state = self.derive_state()
+                break
         return state
 
     def detect_soccer(self):
@@ -222,23 +227,23 @@ class field():
             for j in range(i + 1, self.numA):
                 dist_to_other = self.teamA[i].coord.dist(self.teamA[j].coord)
                 if dist_to_other <= 2 * self.radius_player:
-                    return False
+                    return True
             for j in range(0, self.numB):
                 dist_to_other = self.teamA[i].coord.dist(self.teamB[j].coord)
                 if dist_to_other <= 2 * self.radius_player:
-                    return False
+                    return True
             dist_to_ball = self.teamA[i].coord.dist(self.soccer.coord)
             if dist_to_ball <= self.radius_player + self.radius_soccer:
-                return False
+                return True
         for i in range(self.numB):
             for j in range(i + 1, self.numB):
                 dist_to_other = self.teamB[i].coord.dist(self.teamB[j].coord)
                 if dist_to_other <= 2 * self.radius_player:
-                    return False
+                    return True
             dist_to_ball = self.teamB[i].coord.dist(self.soccer.coord)
             if dist_to_ball <= self.radius_player + self.radius_soccer:
-                return False
-        return True
+                return True
+        return False
 
     def detect_player(self):
         kick = 0
@@ -299,7 +304,8 @@ class field():
         self.soccer.process(True, self.time_step, self.gamma)
         return flag
 
-    def vel_polar2eu(self, state, command):
+    def vel_polar2eu(self, command):
+        state = self.derive_arc()
         eu_command = command.copy()
         for i in range(self.numA):
             c = np.cos(state[2 * i + 1])
@@ -314,26 +320,28 @@ class field():
         return eu_command
 
     def run(self, command):
-        state = self.derive_arc()
-        command_eu = self.vel_polar2eu(state, command)
-        self.set_vel(command_eu)
+        state = self.derive_state()
+        # command_eu = self.vel_polar2eu(command)
+        self.set_vel(command)
         done, kick = self.detect_player()
         r = np.zeros(self.numA)
-
+        v_ball = 0
         if done:
-            state_ = state
+            state_ = state.copy()
             flag = -1
         else:
             flag = self.set_coord()
-            state_ = self.derive_arc()
+            state_ = self.derive_state()
+
             for i in range(self.numA):
-                r[i] = -command[2*i]
-
-                # r[i] = -8*(np.cos(state[2*i+1])-np.cos(state_[2*i+1]))
-                # _, t1 = arc(self.width / 2 - self.teamA[i].coord.x, self.teamA[i].coord.y - self.gate_length / 2)
-                # _, t2 = arc(self.width / 2 - self.teamA[i].coord.x, self.teamA[i].coord.y + self.gate_length / 2)
-            if kick > 0:
-                print('kick')
-                r[kick - 1] += 10
-
-        return state_, flag, r
+                r[i] = 200 * (np.linalg.norm(state[2 * i:2 * i + 2]) - np.linalg.norm(state_[2 * i:2 * i + 2]))
+                # r[i] += 200 * (np.linalg.norm(state[-2:]) - np.linalg.norm(state_[-2:]))
+                r[i] += min(200 * (np.linalg.norm(state[-2:] - state_[-2:])), 0.4)
+                r[i] += 200 * (abs(state[2 * i + 1]) - abs(state_[2 * i + 1]))
+                # r[i] = 50 * (state[2 * i] - state_[2 * i])
+                # r[i] = min(100 * (abs(state[2 * i + 1]) - abs(state_[2 * i + 1])), 0.2)
+                # print(200 * (np.linalg.norm(state[2 * i:2 * i + 2]) - np.linalg.norm(state_[2 * i:2 * i + 2])), min(200 * (np.linalg.norm(state[-2:] - state_[-2:])), 0.4),200 * (abs(state[2 * i + 1]) - abs(state_[2 * i + 1])))
+            # if kick > 0:
+            #     v_ball = min(200 * (np.linalg.norm(state[-2:] - state_[-2])), 0.2)
+            #     print(kick - 1, 'kick')        # print(r)
+        return state_, flag, r, kick, v_ball
