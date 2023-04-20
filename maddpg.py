@@ -30,15 +30,16 @@ class MADDPG:
         if not os.path.exists(self.args.save_dir):
             os.mkdir(self.args.save_dir)
         # path to save the model
-        self.model_path = self.args.save_dir + '/' + self.args.scenario_name
+        self.model_path = self.args.save_dir + self.args.scenario_name
         if not os.path.exists(self.model_path):
             os.mkdir(self.model_path)
-        self.model_path = self.model_path + '/' + 'agent_%d' % agent_id
+        self.model_path = self.model_path + '/agent_%d' % agent_id
+
         if not os.path.exists(self.model_path):
             os.mkdir(self.model_path)
 
         # 加载模型
-        n = '8'
+        n = '62'
         if os.path.exists(self.model_path + '/'+n+'_actor_params.pkl'):
             self.actor_network.load_state_dict(torch.load(self.model_path + '/'+n+'_actor_params.pkl'))
             self.critic_network.load_state_dict(torch.load(self.model_path + '/'+n+'_critic_params.pkl'))
@@ -56,7 +57,7 @@ class MADDPG:
             target_param.data.copy_((1 - self.args.tau) * target_param.data + self.args.tau * param.data)
 
     # update the network
-    def train(self, transitions, other_agents):
+    def train(self, transitions, other_agents, weights=None):
         for key in transitions.keys():
             transitions[key] = torch.tensor(transitions[key], dtype=torch.float32)
         r = transitions['r_%d' % self.agent_id]  # 训练时只需要自己的reward
@@ -81,10 +82,12 @@ class MADDPG:
             q_next = self.critic_target_network(o_next, u_next).detach()
 
             target_q = (r.unsqueeze(1) + self.args.gamma * q_next).detach()
-
         # the q loss
         q_value = self.critic_network(o, u)
-        critic_loss = (target_q - q_value).pow(2).mean()
+        if weights is None:
+            weights = torch.ones_like(q_value)
+        td_error = abs(target_q - q_value).detach().numpy().squeeze()
+        critic_loss = ((target_q - q_value).pow(2) * weights).mean()
 
         # the actor loss
         # 重新选择联合动作中当前agent的动作，其他agent的动作不变
@@ -105,6 +108,7 @@ class MADDPG:
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
             self.save_model(self.train_step)
         self.train_step += 1
+        return td_error
 
     def save_model(self, train_step):
 

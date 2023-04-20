@@ -31,24 +31,28 @@ def draw(all_state):
         screen.fill('green')
         gate = pygame.Rect(args.field_width / ratio - wid, (args.field_length - args.gate_length) / 2 / ratio, wid,
                            args.gate_length / ratio)
-        fzone = pygame.Rect(args.field_width / ratio - fzone_wid, (args.field_length - args.gate_length) / 2 / ratio-gap, fzone_wid,
-                            args.gate_length / ratio+2*gap)
+        fzone = pygame.Rect(args.field_width / ratio - fzone_wid,
+                            (args.field_length - args.gate_length) / 2 / ratio - gap, fzone_wid,
+                            args.gate_length / ratio + 2 * gap)
         pygame.draw.circle(screen, (255, 255, 255), (0, args.field_length / 2 / ratio), 200, width=3)
         pygame.draw.lines(screen, (255, 255, 255), False, [(0, 0), (0, args.field_length / ratio)], width=3)
         pygame.draw.lines(screen, (255, 255, 255), False,
-                          [(args.field_width / 2 / ratio, 0), (args.field_width / 2 / ratio, args.field_length / ratio)], width=3)
+                          [(args.field_width / 2 / ratio, 0),
+                           (args.field_width / 2 / ratio, args.field_length / ratio)], width=3)
         pygame.draw.rect(screen, (190, 190, 190), gate)
         pygame.draw.rect(screen, (255, 255, 255), fzone, width=3)
         for i in range(args.num_teamA):
-            pygame.draw.circle(screen, (155*i, 155*(1-i), 0), (
-                (teamA[4 * i] + args.field_width / 2) / ratio, (-teamA[4 * i + 1] + args.field_length / 2) / ratio),
-                               args.radius_player / ratio)
+            color = (155 * i / args.num_teamA, 155 * (args.num_teamA - i - 1) / args.num_teamA, 0)
+            coord = ((teamA[4 * i] + args.field_width / 2) / ratio, (-teamA[4 * i + 1] + args.field_length / 2) / ratio)
+            pygame.draw.circle(screen, color, coord, args.radius_player / ratio)
+            pygame.draw.circle(screen, color, (10 + i * 20, 10), 10)
         for i in range(args.num_teamB):
-            pygame.draw.circle(screen, (0, 0, 255), (
-                (teamB[4 * i] + args.field_width / 2) / ratio, (-teamB[4 * i + 1] + args.field_length / 2) / ratio),
-                               args.radius_player / ratio)
-        pygame.draw.circle(screen, (255, 255, 255),
-                           ((soccer_coord[0] + args.field_width / 2) / ratio, (-soccer_coord[1] + args.field_length / 2) / ratio),
-                           args.radius_soccer / ratio)
+            color = (0, 0, 255)
+            coord = ((teamB[4 * i] + args.field_width / 2) / ratio, (-teamB[4 * i + 1] + args.field_length / 2) / ratio)
+            pygame.draw.circle(screen, color, coord, args.radius_player / ratio)
+        soccer_color = (255, 255, 255)
+        coord = ((soccer_coord[0] + args.field_width / 2) / ratio,
+                 (-soccer_coord[1] + args.field_length / 2) / ratio)
+        pygame.draw.circle(screen, soccer_color, coord, args.radius_soccer / ratio)
         pygame.display.update()  # 更新屏幕内容
-        time.sleep(args.time_step/20)
+        time.sleep(args.time_step / 20)

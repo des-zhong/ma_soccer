@@ -5,8 +5,10 @@ from agent import Agent
 import torch
 from common.arguments import get_env_arg, get_args
 from common.replay_buffer import Buffer
+from common.replay_buffer import PrioritizedReplayBuffer
 import os
 import visualize
+import matplotlib.pyplot as plt
 import time
 
 
@@ -14,12 +16,14 @@ class Runner:
     def __init__(self, args, env):
         self.args = args
         self.noise = args.noise_rate
-        self.epsilon = args.epsilon
+        self.epsilon_step = (args.max_epsilon - args.min_epsilon) / args.max_iter
+        self.epsilon = args.max_epsilon
         self.episode_limit = args.max_episode_len
         self.env = env
         self.agents = self._init_agents()
-        self.buffer = Buffer(args)
-        self.save_path = self.args.save_dir + '/' + self.args.scenario_name
+        self.buffer = PrioritizedReplayBuffer(args) if args.use_per else Buffer(args)
+        self.save_path = self.args.save_dir + self.args.scenario_name
+        self.eval_reward = []
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
 
@@ -31,35 +35,36 @@ class Runner:
         return agents
 
     def process_train(self):
+        print(f'model save path: {self.save_path}, use per: {args.use_per}, scenario name: {self.args.scenario_name}')
         for trial in range(self.args.max_iter):
-            v_s = []
+            if trial % self.args.evaluate_rate == 0:
+                self.evaluate()
+            t1 = time.time()
             trial_s = []
             trial_u = []
             trial_r = []
             s = [0] * self.args.n_agents
             s_ = [0] * self.args.n_agents
             u = [0] * self.args.n_agents
-            while True:
-                state = self.env.reset()
-                if self.env.collide():
-                    for i in range(self.args.n_agents):
-                        s[i] = state
-                        # + np.random.uniform(-0.1, 0.1, state.shape)
-                    break
+            state = self.env.reset()
+            for i in range(self.args.n_agents):
+                s[i] = state
             trial_s.append(s.copy())
             trial_step = 0
             flag = 0
+            kick_ord = [[0, -1]]
             for steps in range(self.args.max_episode_len):
                 command = np.array([])
                 with torch.no_grad():
                     for i in range(self.args.n_agents):
-                        action = self.agents[i].select_action(s[i], self.args.noise_rate, self.args.epsilon)
+                        action = self.agents[i].select_action(s[i], 0, self.epsilon)
                         u[i] = action.copy()
-                        # print(action)
                         command = np.concatenate((command, action))
                 for i in range(self.args.n_adversaries):
                     command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
-                state_next, flag, r = self.env.run(command)
+                state_next, flag, r, kick = self.env.run(command)
+                if kick > 0:
+                    kick_ord.append([steps, kick])
                 for i in range(self.args.n_agents):
                     s_[i] = state_next.copy()
                 s = s_.copy()
@@ -69,66 +74,101 @@ class Runner:
                 trial_step += 1
                 if not flag == 0:
                     break
-
+            kick_ord.append([trial_step, -1])
+            k = 0
+            order = True
+            t2 = time.time()
             for i in range(trial_step):
+                # if kick_ord[k][0] <= i < kick_ord[k + 1][0]:
+                #     if kick_ord[k + 1][1] > 0:
+                #         trial_r[i][kick_ord[k + 1][1] - 1] += 0.1
+                # else:
+                #     k = k + 1
+                if not flag == 0:
+                    kick_player = kick_ord[-1][1] - 1
+                    trial_r[i] = 0.25 * flag + trial_r[i]
+                    trial_r[i][kick_player] += 0.4 * flag
                 self.buffer.store_episode(trial_s[i], trial_u[i], trial_r[i], trial_s[i + 1])
                 if self.buffer.current_size >= self.args.batch_size:
-                    transitions = self.buffer.sample(self.args.batch_size)
-                    for j in range(self.args.n_agents):
-                        other_agents = self.agents.copy()
-                        other_agents.remove(self.agents[j])
-                        self.agents[j].learn(transitions, other_agents)
-            print(trial, flag)
-            if trial > 0 and trial % self.args.evaluate_rate == 0:
-                self.evaluate()
+                    train_order = range(self.args.n_agents) if order else range(self.args.n_agents - 1, -1)
+                    order = not order
+                    if isinstance(self.buffer, PrioritizedReplayBuffer):
+                        # sample with priorities and update the priorities with td_error
+                        transitions, weights, tree_idxs = self.buffer.sample(self.args.batch_size)
+                        td_error = np.zeros(self.args.batch_size)
+
+                        for j in train_order:
+                            other_agents = self.agents.copy()
+                            other_agents.remove(self.agents[j])
+                            td_error += self.agents[j].learn(transitions, other_agents, weights)
+                        self.buffer.update_priorities(tree_idxs, td_error)
+                    else:
+                        transitions = self.buffer.sample(self.args.batch_size)
+                        for j in train_order:
+                            other_agents = self.agents.copy()
+                            other_agents.remove(self.agents[j])
+                            self.agents[j].learn(transitions, other_agents)
+            t3 = time.time()
+            print(f"trial: {trial}, flag: {flag}, record cost: {t2 - t1}, train cost: {t3 - t2}")
+            self.epsilon = max(self.args.min_epsilon, self.epsilon - self.epsilon_step)
 
     def evaluate(self):
-        rewards = 0
+        score = 0
+        goal = 0
+        k = 0
+        t1 = time.time()
         for trial in range(self.args.evaluate_episodes):
-            while True:
-                state = self.env.reset()
-                if self.env.collide():
-                    break
-
-            for time_step in range(self.args.evaluate_episode_len):
-                command = np.array([])
-                with torch.no_grad():
-                    for i in range(self.args.n_agents):
-                        action = self.agents[i].select_action(state, 0, 0)
-                        command = np.concatenate((command, action))
-                for i in range(self.args.n_adversaries):
-                    command = np.concatenate((command, np.array([0, 0])))
-                state, flag, r = self.env.run(command)
-                if not flag == 0:
-                    rewards += (flag + 1) / 2
-                    break
-        print('goal out of {} is {}'.format(self.args.evaluate_episodes, rewards))
-
-    def match(self, match_num):
-        for trial in range(match_num):
-            trial_s = []
-            while True:
-                state = self.env.reset()
-                if self.env.collide():
-                    trial_s.append(self.env.derive_state())
-                    break
-            print(trial)
+            state = self.env.reset()
             for steps in range(self.args.max_episode_len):
                 command = np.array([])
-
                 with torch.no_grad():
                     for i in range(self.args.n_agents):
                         action = self.agents[i].select_action(state, 0, 0)
                         command = np.concatenate((command, action))
                 for i in range(self.args.n_adversaries):
                     command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
-                state_, flag, r = self.env.run(command)
-
+                state_, flag, r, kick = self.env.run(command)
+                score += sum(r)
+                k = k + 1
                 if not flag == 0:
+                    score += 0.5 * flag * steps
+                    if flag == 1:
+                        goal += 1
                     break
                 state = state_.copy()
-                trial_s.append(self.env.derive_state())
+        self.eval_reward.append(score / k)
+        t = np.array(range(len(self.eval_reward))) * self.args.evaluate_rate
+        plt.plot(t, self.eval_reward)
+        plt.grid()
+        plt.savefig(self.save_path + '/reward.png')
+        t2 = time.time()
+        print('goal out of {} is {}, evaluation time cost = {}'.format(self.args.evaluate_episodes, goal, t2 - t1))
+
+    def match(self, match_num):
+        goal = 0
+        flag = 0
+        for trial in range(match_num):
+            trial_s = []
+            state = self.env.reset()
+            trial_s.append(self.env.derive_abs_state())
+            for steps in range(self.args.max_episode_len):
+                command = np.array([])
+                with torch.no_grad():
+                    for i in range(self.args.n_agents):
+                        action = self.agents[i].select_action(state, 0, 0)
+                        command = np.concatenate((command, action))
+                for i in range(self.args.n_adversaries):
+                    command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
+                state_, flag, r, kick = self.env.run(command)
+                if not flag == 0:
+                    if flag == 1:
+                        goal += 1
+                    break
+                state = state_.copy()
+                trial_s.append(self.env.derive_abs_state())
+            print(f"trial: {trial}, flag: {flag}")
             visualize.draw(trial_s)
+        print('goal out of {} is {}'.format(match_num, goal))
 
 
 if __name__ == '__main__':
