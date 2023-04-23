@@ -10,4 +10,7 @@ if __name__ == '__main__':
     args = get_args()
     field = utility.field(env_arg)
     runner = Runner(args, field)
-    runner.match(20)
+    runner.match(10)
+    # field.match()
+    # field.match(10000, 30)
+    # field.test_collide(1)
