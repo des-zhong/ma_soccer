@@ -9,7 +9,7 @@ class MADDPG:
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0
-
+        self.save_num = int(args.load_num)
         # create the network
         self.actor_network = Actor(args, agent_id)
         self.critic_network = Critic(args)
@@ -39,14 +39,14 @@ class MADDPG:
             os.mkdir(self.model_path)
 
         # 加载模型
-        n = '39'
-        if os.path.exists(self.model_path + '/'+n+'_actor_params.pkl'):
-            self.actor_network.load_state_dict(torch.load(self.model_path + '/'+n+'_actor_params.pkl'))
-            self.critic_network.load_state_dict(torch.load(self.model_path + '/'+n+'_critic_params.pkl'))
+        n = self.args.load_num
+        if os.path.exists(self.model_path + '/' + n + '_actor_params.pkl'):
+            self.actor_network.load_state_dict(torch.load(self.model_path + '/' + n + '_actor_params.pkl'))
+            self.critic_network.load_state_dict(torch.load(self.model_path + '/' + n + '_critic_params.pkl'))
             print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
-                                                                          self.model_path + '/'+n+'_actor_params.pkl'))
+                                                                          self.model_path + '/' + n + '_actor_params.pkl'))
             print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
-                                                                           self.model_path + '/'+n+'_critic_params.pkl'))
+                                                                           self.model_path + '/' + n + '_critic_params.pkl'))
 
     # soft update
     def _soft_update_target_network(self):
@@ -66,7 +66,6 @@ class MADDPG:
             o.append(transitions['o_%d' % agent_id])
             u.append(transitions['u_%d' % agent_id])
             o_next.append(transitions['o_next_%d' % agent_id])
-
         # calculate the target Q value function
         u_next = []
         with torch.no_grad():
@@ -80,9 +79,11 @@ class MADDPG:
                     u_next.append(other_agents[index].policy.actor_target_network(o_next[agent_id]))
                     index += 1
             q_next = self.critic_target_network(o_next, u_next).detach()
-
             target_q = (r.unsqueeze(1) + self.args.gamma * q_next).detach()
+            target_q = torch.clamp(target_q, -1 / (1 - self.args.gamma), 0)
+            # print(target_q.T, '\n')
         # the q loss
+
         q_value = self.critic_network(o, u)
         if weights is None:
             weights = torch.ones_like(q_value)
@@ -106,18 +107,18 @@ class MADDPG:
 
         self._soft_update_target_network()
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
-            self.save_model(self.train_step)
+            self.save_model()
         self.train_step += 1
         return td_error
 
-    def save_model(self, train_step):
-        num = str(train_step // self.args.save_rate)
-        print(f'save model {num}')
+    def save_model(self):
+        self.save_num += 1
+        print(f'save model {self.save_num}')
         model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         model_path = os.path.join(model_path, 'agent_%d' % self.agent_id)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        torch.save(self.actor_network.state_dict(), model_path + '/' + num + '_actor_params.pkl')
-        torch.save(self.critic_network.state_dict(), model_path + '/' + num + '_critic_params.pkl')
+        torch.save(self.actor_network.state_dict(), model_path + '/' + str(self.save_num) + '_actor_params.pkl')
+        torch.save(self.critic_network.state_dict(), model_path + '/' + str(self.save_num) + '_critic_params.pkl')

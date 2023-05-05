@@ -1,114 +1,6 @@
 import numpy as np
-import visualize
-import maddpg
-
-
-class vec2D():
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-    def add(self, vec2):
-        return vec2D(self.x + vec2.x, self.y + vec2.y)
-
-    def min(self, vec2):
-        return vec2D(self.x - vec2.x, self.y - vec2.y)
-
-    def mul(self, c):
-        return vec2D(self.x * c, self.y * c)
-
-    def dist(self, vec2):
-        return np.sqrt((self.x - vec2.x) ** 2 + (self.y - vec2.y) ** 2)
-
-
-def random(xlim, ylim):
-    x = np.random.uniform(xlim[0], xlim[1])
-    y = np.random.uniform(ylim[0], ylim[1])
-    return vec2D(x, y)
-
-
-def arc(dx, dy):
-    r = np.sqrt(dx ** 2 + dy ** 2)
-    theta = np.arctan(dy / dx)
-    if dx < 0:
-        if dy > 0:
-            theta += np.pi
-        else:
-            theta -= np.pi
-    return r, theta
-
-
-def reArrangeOrder(state, index, index_a):
-    id = int(2 * index_a[index])
-    if id == 0:
-        return state
-    else:
-        temp = state[id:id + 2]
-        S = np.delete(state, [id, id + 1])
-        S = np.insert(S, 0, temp)
-        return S
-
-
-class object():
-    def __init__(self, coord, vel, radius, index=-1):
-        self.coord = coord
-        self.vel = vel
-        self.radius = radius
-        self.index = index
-
-    def strike(self, player):
-        d = player.coord.dist(self.coord)
-        dx = self.coord.x - player.coord.x
-        dy = self.coord.y - player.coord.y
-        vy1 = player.vel.y
-        vx1 = player.vel.x
-        vy2 = self.vel.y
-        vx2 = self.vel.x
-        s = dy / d
-        c = dx / d
-        vrx = vx1 - vx2
-        vry = vy1 - vy2
-        if vrx * c + vry * s < 0:
-            return
-
-        self.vel = vec2D(2 * vry * s * c + vrx * (c ** 2 - s ** 2) + vx1 + 0.1 * dx,
-                         2 * vrx * s * c - vry * (c ** 2 - s ** 2) + vy1 + 0.1 * dy)
-        # print('vy=', 2 * vrx * s * c - vry * (c ** 2 - s ** 2) + vy1 + 0.1 * dy)
-
-    def soccer_bounce(self, xbounds):
-        coef = 0.9
-        if xbounds:
-            self.vel.x = -coef * self.vel.x
-        else:
-            self.vel.y = -coef * self.vel.y
-
-    def crush(self, player):
-        coef = -1
-        d = player.coord.dist(self.coord)
-        dx = self.coord.x - player.coord.x
-        dy = self.coord.y - player.coord.y
-        vy1 = player.vel.y
-        vx1 = player.vel.x
-        vy2 = self.vel.y
-        vx2 = self.vel.x
-        s = dy / d
-        c = dx / d
-        self.vel = vec2D(vx1 * s ** 2 - vy1 * c * s + vx2 * c ** 2 + vy2 * s * c - coef * d * c,
-                         vx2 * c * s + vy2 * s ** 2 - vx1 * s * c + vy1 * c ** 2 - coef * d * s)
-        player.vel = vec2D(vx2 * s ** 2 - vy2 * c * s + vx1 * c ** 2 + vy1 * s * c + coef * d * c,
-                           vx1 * c * s + vy1 * s ** 2 - vx2 * s * c + vy2 * c ** 2 + coef * d * s)
-
-    def process(self, fade, time_step, gamma):
-        self.coord = self.coord.add(self.vel.mul(time_step))
-        if not fade:
-            return
-
-        prev_vel = self.vel
-        self.vel = self.vel.min(self.vel.mul(gamma * time_step))
-        if self.vel.x * prev_vel.x < 0:
-            self.vel.x = 0
-        if self.vel.y * prev_vel.y < 0:
-            self.vel.y = 0
+import CalcRule as CR
+from object import object
 
 
 class field():
@@ -124,20 +16,14 @@ class field():
 
         self.gate_length = arg.gate_length
         # self.xlimA = [-width / 2 + radius_player, width / 2 - radius_player]
-        self.xlimA = [-self.width / 2 + 2 * arg.radius_player, 0]
+        self.xlimA = [-self.width / 8, self.width / 8]
         self.xlimB = [self.width / 4, self.width / 2 - arg.radius_player]
-        self.ylimA = [-self.length / 3 + arg.radius_player, self.length / 3 - arg.radius_player]
+        self.ylimA = [-self.width / 16, self.width / 16]
         self.ylimB = [-self.length / 2 + arg.radius_player, self.length / 2 - arg.radius_player]
         self.score = [0, 0]
         self.teamA = []
         self.teamB = []
-        for i in range(arg.num_teamA):
-            random_coord = random(self.xlimA, self.ylimA)
-            self.teamA.append(object(random_coord, vec2D(0, 0), arg.radius_player, i))
-        for i in range(arg.num_teamB):
-            random_coord = random(self.xlimB, self.ylimB)
-            self.teamB.append(object(random_coord, vec2D(0, 0), arg.radius_player, i))
-        self.soccer = object(vec2D(0, 0), vec2D(0, 0), arg.radius_soccer)
+        self.soccer = None
         self.derive_state = self.derive_arc if arg.state_term == 1 else self.derive_pos
 
     def derive_abs_state(self):
@@ -158,6 +44,18 @@ class field():
         state.append(self.soccer.vel.y)
         return np.array(state)
 
+    def derive_abs_pos(self):
+        state = []
+        for i in range(self.numA):
+            state.append(self.teamA[i].coord.x)
+            state.append(self.teamA[i].coord.y)
+        for i in range(self.numB):
+            state.append(self.teamB[i].coord.x)
+            state.append(self.teamB[i].coord.y)
+        state.append(self.soccer.coord.x)
+        state.append(self.soccer.coord.y)
+        return np.array(state) / self.width * 2
+
     def derive_pos(self):
         state = []
         for i in range(self.numA):
@@ -168,7 +66,6 @@ class field():
             state.append(-self.teamB[i].coord.y + self.soccer.coord.y)
         state.append(self.width / 2 - self.soccer.coord.x)
         state.append(-self.soccer.coord.y)
-
         return np.array(state) / self.width * 2
 
     def derive_arc(self):
@@ -177,16 +74,16 @@ class field():
         for i in range(self.numA):
             dx = -self.teamA[i].coord.x + self.soccer.coord.x
             dy = self.teamA[i].coord.y - self.soccer.coord.y
-            r, theta = arc(dx, dy)
+            r, theta = CR.arc(dx, dy)
             state = state + [4 * r / self.width, theta]
         for i in range(self.numB):
             dx = self.teamB[i].coord.x - self.soccer.coord.x
             dy = self.teamB[i].coord.y - self.soccer.coord.y
-            r, theta = arc(dx, dy)
+            r, theta = CR.arc(dx, dy)
             state = state + [4 * r / self.width, theta]
         dx = self.width / 2 - self.soccer.coord.x
         dy = -self.soccer.coord.y
-        r, theta = arc(dx, dy)
+        r, theta = CR.arc(dx, dy)
         state = state + [4 * r / self.width, theta]
         return np.array(state)
 
@@ -195,16 +92,16 @@ class field():
             self.teamA = []
             self.teamB = []
             for i in range(self.numA):
-                random_coord = random(self.xlimA, self.ylimA)
-                # random_coord = vec2D(-800, 200)
-                self.teamA.append(object(random_coord, vec2D(0, 0), self.radius_player, i))
+                random_coord = CR.random(self.xlimA, self.ylimA)
+                # random_coord = CR.vec2D(0, 0)
+                self.teamA.append(object(random_coord, CR.vec2D(0, 0), self.radius_player, i))
             for i in range(self.numB):
-                random_coord = random(self.xlimB, self.ylimB)
+                random_coord = CR.random(self.xlimB, self.ylimB)
                 # random_coord = vec2D(800, 200)
-                self.teamB.append(object(random_coord, vec2D(0, 0), self.radius_player, i))
-            # random_coord = vec2D(-100, 100)
-            random_coord = random([0, self.width / 8], [-self.length / 8, self.length / 8])
-            self.soccer = object(random_coord, vec2D(0, 0), self.radius_soccer)
+                self.teamB.append(object(random_coord, CR.vec2D(0, 0), self.radius_player, i))
+            # random_coord = CR.vec2D(self.width/7, 0)
+            random_coord = CR.random([self.width / 8, self.width / 7], [-self.length / 16, self.length / 16])
+            self.soccer = object(random_coord, CR.vec2D(0, 0), self.radius_soccer)
             if not self.collide():
                 state = self.derive_state()
                 break
@@ -289,9 +186,9 @@ class field():
 
     def set_vel(self, command):
         for i in range(self.numA):
-            self.teamA[i].vel = vec2D(command[2 * i], command[2 * i + 1])
+            self.teamA[i].vel = CR.vec2D(command[2 * i], command[2 * i + 1])
         for i in range(self.numB):
-            self.teamB[i].vel = vec2D(command[2 * self.numA + 2 * i], command[2 * self.numA + 2 * i + 1])
+            self.teamB[i].vel = CR.vec2D(command[2 * self.numA + 2 * i], command[2 * self.numA + 2 * i + 1])
 
     def set_coord(self):
         kick = 0
@@ -332,16 +229,14 @@ class field():
         else:
             flag = self.set_coord()
             state_ = self.derive_state()
-
             for i in range(self.numA):
-                r[i] = 200 * (np.linalg.norm(state[2 * i:2 * i + 2]) - np.linalg.norm(state_[2 * i:2 * i + 2]))
-                # r[i] += 200 * (np.linalg.norm(state[-2:]) - np.linalg.norm(state_[-2:]))
-                r[i] += min(200 * (np.linalg.norm(state[-2:] - state_[-2:])), 0.4)
-                r[i] += 200 * (abs(state[2 * i + 1]) - abs(state_[2 * i + 1]))
-                # r[i] = 50 * (state[2 * i] - state_[2 * i])
-                # r[i] = min(100 * (abs(state[2 * i + 1]) - abs(state_[2 * i + 1])), 0.2)
-                # print(200 * (np.linalg.norm(state[2 * i:2 * i + 2]) - np.linalg.norm(state_[2 * i:2 * i + 2])), min(200 * (np.linalg.norm(state[-2:] - state_[-2:])), 0.4),200 * (abs(state[2 * i + 1]) - abs(state_[2 * i + 1])))
-            # if kick > 0:
-            #     v_ball = min(200 * (np.linalg.norm(state[-2:] - state_[-2])), 0.2)
-            #     print(kick - 1, 'kick')        # print(r)
+                # if np.linalg.norm(state[-2:] - np.array([1 / 2, 0])) < 0.072:
+                if np.linalg.norm(state[-2:] - np.array([0.1, 0])) < 0.1:
+                    r[i] = 0
+                    print(state)
+                    flag = 1
+                else:
+                    r[i] = -1
+        if kick > 0:
+            print('kick')
         return state_, flag, r, kick, v_ball

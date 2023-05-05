@@ -13,10 +13,10 @@ class Buffer:
         # create the buffer to store info
         self.buffer = dict()
         for i in range(self.args.n_agents):
-            self.buffer['o_%d' % i] = np.empty([self.size, self.args.state_dim])
+            self.buffer['o_%d' % i] = np.empty([self.size, self.args.state_dim + self.args.goal_dim])
             self.buffer['u_%d' % i] = np.empty([self.size, self.args.action_dim])
             self.buffer['r_%d' % i] = np.empty([self.size])
-            self.buffer['o_next_%d' % i] = np.empty([self.size, self.args.state_dim])
+            self.buffer['o_next_%d' % i] = np.empty([self.size, self.args.state_dim + self.args.goal_dim])
         # thread lock
         self.lock = threading.Lock()
 

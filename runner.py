@@ -1,5 +1,4 @@
-import maddpg
-import utility
+import fieldEnv
 import numpy as np
 from agent import Agent
 import torch
@@ -7,11 +6,12 @@ from common.arguments import get_env_arg, get_args
 from common.replay_buffer import Buffer
 from common.replay_buffer import PrioritizedReplayBuffer
 import os
-import visualize
 import matplotlib.pyplot as plt
 import time
 from logger import Logger
 import sys
+
+goal = np.array([0, 0, 0.1, 0])
 
 
 class Runner:
@@ -40,20 +40,18 @@ class Runner:
     def process_train(self):
 
         print(f'model save path: {self.save_path}, use per: {args.use_per}, scenario name: {self.args.scenario_name}')
+
         for trial in range(self.args.max_iter):
-            if trial % self.args.evaluate_rate == 0:
-                self.evaluate()
+            trans = []
+            # if trial % self.args.evaluate_rate == 0:
+            #     self.evaluate()
             t1 = time.time()
-            trial_s = []
-            trial_u = []
-            trial_r = []
             s = [0] * self.args.n_agents
             s_ = [0] * self.args.n_agents
             u = [0] * self.args.n_agents
             state = self.env.reset()
             for i in range(self.args.n_agents):
-                s[i] = state
-            trial_s.append(s.copy())
+                s[i] = state.copy()
             trial_step = 0
             flag = 0
             kick_ord = [[0, 0, 0]]
@@ -61,37 +59,51 @@ class Runner:
                 command = np.array([])
                 with torch.no_grad():
                     for i in range(self.args.n_agents):
-                        action = self.agents[i].select_action(s[i], 0, self.epsilon)
+                        action = self.agents[i].select_action(np.concatenate((state, goal)), self.noise, self.epsilon)
                         u[i] = action.copy()
                         command = np.concatenate((command, action))
                 for i in range(self.args.n_adversaries):
                     command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
                 state_next, flag, r, kick, v_ball = self.env.run(command)
-                if kick > 0:
-                    kick_ord.append([steps, kick, v_ball])
+                # if kick > 0:
+                #     kick_ord.append([steps, kick, v_ball])
                 for i in range(self.args.n_agents):
                     s_[i] = state_next.copy()
+                trans.append([s.copy(), u.copy(), r.copy(), s_.copy()])
                 s = s_.copy()
-                trial_s.append(s.copy())
-                trial_u.append(u.copy())
-                trial_r.append(r.copy())
                 trial_step += 1
                 if not flag == 0:
                     break
-            kick_ord.append([trial_step, 0, 0])
-            k = 0
+            agoal = trans[-1][-1][0]
             order = True
             t2 = time.time()
+            kicked = False
             for i in range(trial_step):
                 # if kick_ord[k][0] <= i < kick_ord[k + 1][0]:
                 #     trial_r[i][kick_ord[k + 1][1] - 1] += kick_ord[k + 1][2]
                 # elif kick_ord[k + 1][0] < trial_step:
                 #     k = k + 1
-                if not flag == 0:
-                    shoot_player = kick_ord[-1][1] - 1
-                    trial_r[i] = 0.4 * flag + trial_r[i]
-                    trial_r[i][shoot_player] += 0.3 * flag
-                self.buffer.store_episode(trial_s[i], trial_u[i], trial_r[i], trial_s[i + 1])
+                # if not flag == 0:
+                #     shoot_player = kick_ord[-1][1] - 1
+                #     trial_r[i] = 0.4 * flag + trial_r[i]
+                #     trial_r[i][shoot_player] += 0.3 * flag
+
+                tran = trans[i]
+                sdg = [np.concatenate((tran[0][0], goal))]
+                sdg_next = [np.concatenate((tran[3][0], goal))]
+                sag = [np.concatenate((tran[0][0], agoal))]
+                sag_next = [np.concatenate((tran[3][0], agoal))]
+
+                reward_a = -1
+                if np.linalg.norm(tran[0][0][:2] - agoal[0:2]) < 0.075 and not kicked:
+                    reward_a += 0.5
+                    kicked = True
+                if np.linalg.norm(tran[0][0][-2:] - agoal[-2:]) < 0.1:
+                    reward_a += 0.5
+                self.buffer.store_episode(sdg, tran[1], tran[2], sdg_next)
+                self.buffer.store_episode(sag, tran[1], [reward_a], sag_next)
+                # print(tran)
+                # print(tran_goal, '\n')
                 if self.buffer.current_size >= self.args.batch_size:
                     train_order = list(range(self.args.n_agents)) if order else list(
                         range(self.args.n_agents - 1, -1, -1))
@@ -112,7 +124,7 @@ class Runner:
                             other_agents.remove(self.agents[j])
                             self.agents[j].learn(transitions, other_agents)
             t3 = time.time()
-            print(f"trial: {trial}, flag: {flag}, record cost: {t2 - t1}, train cost: {t3 - t2}")
+            print(f"trial: {trial}, flag: {flag}, record cost: {t2 - t1:.2f}, train cost: {t3 - t2:.2f}")
             self.epsilon = max(self.args.min_epsilon, self.epsilon - self.epsilon_step)
         sys.stdout = Logger(args.save_dir + args.scenario_name + '/train.log')
 
@@ -123,6 +135,7 @@ class Runner:
         t1 = time.time()
         for trial in range(self.args.evaluate_episodes):
             state = self.env.reset()
+
             for steps in range(self.args.max_episode_len):
                 command = np.array([])
                 with torch.no_grad():
@@ -148,10 +161,10 @@ class Runner:
         t2 = time.time()
         print('goal out of {} is {}, evaluation time cost = {}'.format(self.args.evaluate_episodes, goal, t2 - t1))
 
-    def match(self, match_num):
+    def match(self, match_num, show):
+        import visualize
         print(
             f'model save path: {self.save_path}, use per: {self.args.use_per}, scenario name: {self.args.scenario_name}')
-        goal = 0
         flag = 0
         for trial in range(match_num):
             trial_s = []
@@ -161,21 +174,20 @@ class Runner:
                 command = np.array([])
                 with torch.no_grad():
                     for i in range(self.args.n_agents):
-                        action = self.agents[i].select_action(state, 0, 0)
+                        action = self.agents[i].select_action(np.concatenate((state, goal)), 0, 0)
                         command = np.concatenate((command, action))
-
+                        # print(command)
                 for i in range(self.args.n_adversaries):
                     command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
-                state_, flag, r, kick,_ = self.env.run(command)
+                state_, flag, r, kick, _ = self.env.run(command)
                 if not flag == 0:
-                    if flag == 1:
-                        goal += 1
                     break
                 state = state_.copy()
                 trial_s.append(self.env.derive_abs_state())
             print(f"trial: {trial}, flag: {flag}")
-            visualize.draw(trial_s)
-        print('goal out of {} is {}'.format(match_num, goal))
+            if show:
+                visualize.draw(trial_s)
+        # print('goal out of {} is {}'.format(match_num, goal))
 
 
 if __name__ == '__main__':
@@ -183,6 +195,6 @@ if __name__ == '__main__':
     state_form = 'polar' if env_arg.state_term == 1 else 'euclid'
     print(f'input state is in {state_form} form')
     args = get_args()
-    field = utility.field(env_arg)
+    field = fieldEnv.field(env_arg)
     runner = Runner(args, field)
     runner.process_train()

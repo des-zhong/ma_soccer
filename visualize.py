@@ -3,8 +3,17 @@ import pygame
 # from config import *
 import time
 from common.arguments import get_env_arg
+import os
 
+window_pos = (10000, 0)
+os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % window_pos
 white = (255, 255, 255)
+args = get_env_arg()
+pygame.init()
+ratio = 3
+screen = pygame.display.set_mode((args.field_width / ratio, args.field_length / ratio))
+# 设置窗口标题
+pygame.display.set_caption('soccer game')
 
 
 def text_objects(text, font):
@@ -13,14 +22,6 @@ def text_objects(text, font):
 
 
 def draw(all_state):
-    args = get_env_arg()
-    pygame.init()
-    ratio = 3
-    my_font = pygame.font.SysFont("arial", 16)
-    # 设置主屏窗口 ；设置全屏格式：flags=pygame.FULLSCREEN
-    screen = pygame.display.set_mode((args.field_width / ratio, args.field_length / ratio))
-    # 设置窗口标题
-    pygame.display.set_caption('soccer game')
     wid = 20
     fzone_wid = 150
     gap = 50
@@ -31,16 +32,19 @@ def draw(all_state):
         screen.fill('green')
         gate = pygame.Rect(args.field_width / ratio - wid, (args.field_length - args.gate_length) / 2 / ratio, wid,
                            args.gate_length / ratio)
-        fzone = pygame.Rect(args.field_width / ratio - fzone_wid, (args.field_length - args.gate_length) / 2 / ratio-gap, fzone_wid,
-                            args.gate_length / ratio+2*gap)
+        fzone = pygame.Rect(args.field_width / ratio - fzone_wid,
+                            (args.field_length - args.gate_length) / 2 / ratio - gap, fzone_wid,
+                            args.gate_length / ratio + 2 * gap)
         pygame.draw.circle(screen, (255, 255, 255), (0, args.field_length / 2 / ratio), 200, width=3)
+
         pygame.draw.lines(screen, (255, 255, 255), False, [(0, 0), (0, args.field_length / ratio)], width=3)
         pygame.draw.lines(screen, (255, 255, 255), False,
-                          [(args.field_width / 2 / ratio, 0), (args.field_width / 2 / ratio, args.field_length / ratio)], width=3)
+                          [(args.field_width / 2 / ratio, 0),
+                           (args.field_width / 2 / ratio, args.field_length / ratio)], width=3)
         pygame.draw.rect(screen, (190, 190, 190), gate)
         pygame.draw.rect(screen, (255, 255, 255), fzone, width=3)
         for i in range(args.num_teamA):
-            pygame.draw.circle(screen, (155*i, 155*(1-i), 0), (
+            pygame.draw.circle(screen, (155 * i, 155 * (1 - i), 0), (
                 (teamA[4 * i] + args.field_width / 2) / ratio, (-teamA[4 * i + 1] + args.field_length / 2) / ratio),
                                args.radius_player / ratio)
         for i in range(args.num_teamB):
@@ -48,7 +52,16 @@ def draw(all_state):
                 (teamB[4 * i] + args.field_width / 2) / ratio, (-teamB[4 * i + 1] + args.field_length / 2) / ratio),
                                args.radius_player / ratio)
         pygame.draw.circle(screen, (255, 255, 255),
-                           ((soccer_coord[0] + args.field_width / 2) / ratio, (-soccer_coord[1] + args.field_length / 2) / ratio),
+                           ((soccer_coord[0] + args.field_width / 2) / ratio,
+                            (-soccer_coord[1] + args.field_length / 2) / ratio),
                            args.radius_soccer / ratio)
+        # pygame.draw.circle(screen, (0, 0, 0),
+        #                    ((soccer_coord[0]+args.field_width / 2 + args.field_width / 4) / ratio,
+        #                     (-soccer_coord[1]+args.field_width / 2) / ratio),
+        #                    60 / ratio)
+        pygame.draw.circle(screen, (0, 0, 0),
+                           ((args.field_width / 2 + args.field_width / 4) / ratio,
+                            (args.field_width / 2) / ratio),
+                           60 / ratio)
         pygame.display.update()  # 更新屏幕内容
-        time.sleep(args.time_step/20)
+        time.sleep(args.time_step / 5)

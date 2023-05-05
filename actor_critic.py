@@ -9,7 +9,7 @@ class Actor(nn.Module):
     def __init__(self, args, agent_id):
         super(Actor, self).__init__()
         self.max_action = args.high_action
-        self.fc1 = nn.Linear(args.state_dim, 128)
+        self.fc1 = nn.Linear(args.state_dim + args.goal_dim, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, 64)
         self.action_out = nn.Linear(64, args.action_dim)
@@ -27,7 +27,7 @@ class Critic(nn.Module):
     def __init__(self, args):
         super(Critic, self).__init__()
         self.max_action = args.high_action
-        self.fc1 = nn.Linear(args.all_state_dim + args.command_dim, 128)
+        self.fc1 = nn.Linear(args.all_state_dim + args.goal_dim + args.command_dim, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, 64)
         self.q_out = nn.Linear(64, 1)
