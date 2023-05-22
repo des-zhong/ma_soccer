@@ -1,6 +1,10 @@
 import numpy as np
+import torch
+
 import CalcRule as CR
 from object import object
+import curiousity
+import torch.optim as optim
 
 
 class field():
@@ -25,6 +29,9 @@ class field():
         self.teamB = []
         self.soccer = None
         self.derive_state = self.derive_arc if arg.state_term == 1 else self.derive_pos
+        self.icm = curiousity.ICMModel(arg.state_dim, arg.action_dim, arg.feature_dim, arg.save_dir + arg.scenario_name,
+                                       arg.load_num)
+        self.optimizer = optim.Adam(self.icm.parameters(), lr=0.0000001)
 
     def derive_abs_state(self):
         state = []
@@ -92,15 +99,15 @@ class field():
             self.teamA = []
             self.teamB = []
             for i in range(self.numA):
-                random_coord = CR.random(self.xlimA, self.ylimA)
-                # random_coord = CR.vec2D(0, 0)
+                # random_coord = CR.random(self.xlimA, self.ylimA)
+                random_coord = CR.vec2D(500, 0)
                 self.teamA.append(object(random_coord, CR.vec2D(0, 0), self.radius_player, i))
             for i in range(self.numB):
                 random_coord = CR.random(self.xlimB, self.ylimB)
-                # random_coord = vec2D(800, 200)
+                # random_coord = CR.vec2D(-1250, -200)
                 self.teamB.append(object(random_coord, CR.vec2D(0, 0), self.radius_player, i))
-            # random_coord = CR.vec2D(self.width/7, 0)
-            random_coord = CR.random([self.width / 8, self.width / 7], [-self.length / 16, self.length / 16])
+            random_coord = CR.vec2D(800, 100)
+            # random_coord = CR.random([self.width / 8, self.width / 7], [-self.length / 16, self.length / 16])
             self.soccer = object(random_coord, CR.vec2D(0, 0), self.radius_soccer)
             if not self.collide():
                 state = self.derive_state()
@@ -221,22 +228,24 @@ class field():
         # command_eu = self.vel_polar2eu(command)
         self.set_vel(command)
         done, kick = self.detect_player()
-        r = np.zeros(self.numA)
-        v_ball = 0
         if done:
             state_ = state.copy()
             flag = -1
         else:
             flag = self.set_coord()
             state_ = self.derive_state()
-            for i in range(self.numA):
-                # if np.linalg.norm(state[-2:] - np.array([1 / 2, 0])) < 0.072:
-                if np.linalg.norm(state[-2:] - np.array([0.1, 0])) < 0.1:
-                    r[i] = 0
-                    print(state)
-                    flag = 1
-                else:
-                    r[i] = -1
         if kick > 0:
             print('kick')
-        return state_, flag, r, kick, v_ball
+        return state_, flag, kick
+
+    def get_reward(self, state, state_, action):
+        intrinsic, inverse_err = self.icm.intrinsic(torch.tensor(state), torch.tensor(state_), torch.tensor(action))
+        intrinsic_loss = intrinsic.mean()
+        inverse_loss = inverse_err.mean()
+        self.optimizer.zero_grad()
+        loss = 0.5*intrinsic_loss + 0.5*inverse_loss
+        # print(inverse_loss, intrinsic_loss)
+        loss.backward()
+        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.5)
+        self.optimizer.step()
+        return intrinsic_loss.detach().numpy()

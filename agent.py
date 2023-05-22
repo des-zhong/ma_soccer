@@ -29,3 +29,6 @@ class Agent:
 
     def learn(self, transitions, other_agents, weight=None):
         self.policy.train(transitions, other_agents, weight)
+
+    def save(self):
+        self.policy.save_model()

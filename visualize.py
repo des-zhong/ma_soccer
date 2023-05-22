@@ -2,13 +2,13 @@ import sys
 import pygame
 # from config import *
 import time
-from common.arguments import get_env_arg
 import os
 
 window_pos = (10000, 0)
 os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % window_pos
 white = (255, 255, 255)
-args = get_env_arg()
+from common.arguments import get_args
+args = get_args()
 pygame.init()
 ratio = 3
 screen = pygame.display.set_mode((args.field_width / ratio, args.field_length / ratio))
@@ -59,9 +59,9 @@ def draw(all_state):
         #                    ((soccer_coord[0]+args.field_width / 2 + args.field_width / 4) / ratio,
         #                     (-soccer_coord[1]+args.field_width / 2) / ratio),
         #                    60 / ratio)
-        pygame.draw.circle(screen, (0, 0, 0),
-                           ((args.field_width / 2 + args.field_width / 4) / ratio,
-                            (args.field_width / 2) / ratio),
-                           60 / ratio)
+        # pygame.draw.circle(screen, (0, 0, 0),
+        #                    ((args.field_width / 2 + args.field_width / 4) / ratio,
+        #                     (args.field_width / 2) / ratio),
+        #                    60 / ratio)
         pygame.display.update()  # 更新屏幕内容
         time.sleep(args.time_step / 5)

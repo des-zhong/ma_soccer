@@ -8,7 +8,6 @@ class MADDPG:
     def __init__(self, args, agent_id):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
         self.args = args
         self.agent_id = agent_id
-        self.train_step = 0
         self.save_num = int(args.load_num)
         # create the network
         self.actor_network = Actor(args, agent_id)
@@ -106,19 +105,10 @@ class MADDPG:
         self.critic_optim.step()
 
         self._soft_update_target_network()
-        if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
-            self.save_model()
-        self.train_step += 1
         return td_error
 
     def save_model(self):
         self.save_num += 1
         print(f'save model {self.save_num}')
-        model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
-        if not os.path.exists(model_path):
-            os.makedirs(model_path)
-        model_path = os.path.join(model_path, 'agent_%d' % self.agent_id)
-        if not os.path.exists(model_path):
-            os.makedirs(model_path)
-        torch.save(self.actor_network.state_dict(), model_path + '/' + str(self.save_num) + '_actor_params.pkl')
-        torch.save(self.critic_network.state_dict(), model_path + '/' + str(self.save_num) + '_critic_params.pkl')
+        torch.save(self.actor_network.state_dict(), self.model_path + '/' + str(self.save_num) + '_actor_params.pkl')
+        torch.save(self.critic_network.state_dict(), self.model_path + '/' + str(self.save_num) + '_critic_params.pkl')

@@ -2,7 +2,7 @@ import fieldEnv
 import numpy as np
 from agent import Agent
 import torch
-from common.arguments import get_env_arg, get_args
+from common.arguments import get_args
 from common.replay_buffer import Buffer
 from common.replay_buffer import PrioritizedReplayBuffer
 import os
@@ -11,7 +11,8 @@ import time
 from logger import Logger
 import sys
 
-goal = np.array([0, 0, 0.1, 0])
+
+# goal = np.array([0, 0, 0.1, 0])
 
 
 class Runner:
@@ -40,11 +41,16 @@ class Runner:
     def process_train(self):
 
         print(f'model save path: {self.save_path}, use per: {args.use_per}, scenario name: {self.args.scenario_name}')
-
+        Intrinsic_reward = []
         for trial in range(self.args.max_iter):
             trans = []
             # if trial % self.args.evaluate_rate == 0:
             #     self.evaluate()
+            if trial % self.args.save_rate == 0 and not trial == 0:
+                for i in range(self.args.n_agents):
+                    self.agents[i].save()
+                self.env.icm.save_model()
+
             t1 = time.time()
             s = [0] * self.args.n_agents
             s_ = [0] * self.args.n_agents
@@ -54,56 +60,38 @@ class Runner:
                 s[i] = state.copy()
             trial_step = 0
             flag = 0
-            kick_ord = [[0, 0, 0]]
+            last_kick = self.args.max_episode_len - 1
             for steps in range(self.args.max_episode_len):
                 command = np.array([])
                 with torch.no_grad():
                     for i in range(self.args.n_agents):
-                        action = self.agents[i].select_action(np.concatenate((state, goal)), self.noise, self.epsilon)
+                        action = self.agents[i].select_action(state, self.noise, self.epsilon)
+                        # action = np.array([-100,0])
                         u[i] = action.copy()
                         command = np.concatenate((command, action))
                 for i in range(self.args.n_adversaries):
                     command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
-                state_next, flag, r, kick, v_ball = self.env.run(command)
-                # if kick > 0:
-                #     kick_ord.append([steps, kick, v_ball])
+                state_next, flag, kick = self.env.run(command)
+                if kick > 0:
+                    last_kick = steps
                 for i in range(self.args.n_agents):
                     s_[i] = state_next.copy()
-                trans.append([s.copy(), u.copy(), r.copy(), s_.copy()])
+                trans.append([s.copy(), u.copy(), s_.copy()])
                 s = s_.copy()
                 trial_step += 1
                 if not flag == 0:
                     break
-            agoal = trans[-1][-1][0]
             order = True
             t2 = time.time()
-            kicked = False
+            R = 0
             for i in range(trial_step):
-                # if kick_ord[k][0] <= i < kick_ord[k + 1][0]:
-                #     trial_r[i][kick_ord[k + 1][1] - 1] += kick_ord[k + 1][2]
-                # elif kick_ord[k + 1][0] < trial_step:
-                #     k = k + 1
-                # if not flag == 0:
-                #     shoot_player = kick_ord[-1][1] - 1
-                #     trial_r[i] = 0.4 * flag + trial_r[i]
-                #     trial_r[i][shoot_player] += 0.3 * flag
-
                 tran = trans[i]
-                sdg = [np.concatenate((tran[0][0], goal))]
-                sdg_next = [np.concatenate((tran[3][0], goal))]
-                sag = [np.concatenate((tran[0][0], agoal))]
-                sag_next = [np.concatenate((tran[3][0], agoal))]
 
-                reward_a = -1
-                if np.linalg.norm(tran[0][0][:2] - agoal[0:2]) < 0.075 and not kicked:
-                    reward_a += 0.5
-                    kicked = True
-                if np.linalg.norm(tran[0][0][-2:] - agoal[-2:]) < 0.1:
-                    reward_a += 0.5
-                self.buffer.store_episode(sdg, tran[1], tran[2], sdg_next)
-                self.buffer.store_episode(sag, tran[1], [reward_a], sag_next)
-                # print(tran)
-                # print(tran_goal, '\n')
+                reward = self.env.get_reward(tran[0][0], tran[2][0], tran[1][0])
+                R += reward
+                if i == last_kick:
+                    reward += flag
+                self.buffer.store_episode(tran[0], tran[1], [reward], tran[2])
                 if self.buffer.current_size >= self.args.batch_size:
                     train_order = list(range(self.args.n_agents)) if order else list(
                         range(self.args.n_agents - 1, -1, -1))
@@ -123,10 +111,13 @@ class Runner:
                             other_agents = self.agents.copy()
                             other_agents.remove(self.agents[j])
                             self.agents[j].learn(transitions, other_agents)
+            print(R / trial_step)
+            Intrinsic_reward.append(R / trial_step)
             t3 = time.time()
             print(f"trial: {trial}, flag: {flag}, record cost: {t2 - t1:.2f}, train cost: {t3 - t2:.2f}")
             self.epsilon = max(self.args.min_epsilon, self.epsilon - self.epsilon_step)
-        sys.stdout = Logger(args.save_dir + args.scenario_name + '/train.log')
+        plt.plot(range(len(Intrinsic_reward)), Intrinsic_reward)
+        plt.show()
 
     def evaluate(self):
         score = 0
@@ -174,12 +165,13 @@ class Runner:
                 command = np.array([])
                 with torch.no_grad():
                     for i in range(self.args.n_agents):
-                        action = self.agents[i].select_action(np.concatenate((state, goal)), 0, 0)
+                        action = self.agents[i].select_action(state, 0, 0)
+                        print(action)
                         command = np.concatenate((command, action))
                         # print(command)
                 for i in range(self.args.n_adversaries):
                     command = np.concatenate((command, np.random.rand(2, 1).squeeze() * 20 - 10))
-                state_, flag, r, kick, _ = self.env.run(command)
+                state_, flag, kick = self.env.run(command)
                 if not flag == 0:
                     break
                 state = state_.copy()
@@ -191,10 +183,10 @@ class Runner:
 
 
 if __name__ == '__main__':
-    env_arg = get_env_arg()
-    state_form = 'polar' if env_arg.state_term == 1 else 'euclid'
-    print(f'input state is in {state_form} form')
     args = get_args()
-    field = fieldEnv.field(env_arg)
+    state_form = 'polar' if args.state_term == 1 else 'euclid'
+    print(f'input state is in {state_form} form')
+
+    field = fieldEnv.field(args)
     runner = Runner(args, field)
     runner.process_train()
